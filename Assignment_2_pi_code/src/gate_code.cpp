@@ -17,12 +17,19 @@
 #include <string.h>
 #include <chrono>
 #include <iostream>
-#include<vector>
+#include <vector>
 #include <algorithm>
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 using namespace std;
 using namespace std::chrono;
+using namespace cv;
 #define BUF_SIZE 100
+cv::Mat bgr_img;
 
 //fun fact run ls /dev/tty* on the pi console to see connected ports, looking for ttyACM0/1/2
 //TODO pop out window
@@ -58,7 +65,7 @@ int third_serial_buf_id = 0;
 
 
 // this function handles how a gate functions, depending on its assigned gate id
-bool gate_logic (int gate_id, bool start_to_finish){
+bool gate_logic (int gate_id, bool start_to_finish) {
     switch (gate_id) 
         {
             case 1: // its the start/finish gate
@@ -70,6 +77,7 @@ bool gate_logic (int gate_id, bool start_to_finish){
                     printf("Sector 3 Time: %d\n", (int)sector_3.count()); // type cast the var.count to int to use it elswhere otherwise will default to zero.
                     printf("Total Time: %d\n", (int)total_time.count());
                     printf("Race Ended\n");
+                    // present_leaderboard((int)sector_1.count(), (int)sector_2.count(), (int)sector_3.count(), (int)total_time.count()); // Present data to leaderboard
                 }
                 else if(start_to_finish == false){ // if the gate is in its "start" state
                     printf("RACE START\n"); 
@@ -80,26 +88,27 @@ bool gate_logic (int gate_id, bool start_to_finish){
                 second_gate = high_resolution_clock::now(); // get second gate time
                 sector_1 = duration_cast<milliseconds>(second_gate - start_gate); //calc the time in sector 1
                 printf("Sector 1 Time: %d\n", (int)sector_1.count());
-
+                // present_leaderboard((int)sector_1.count(), 0, 0, 0); // present leaderboard
                 break;
             case 3: // its the third gate
                 start_to_finish = true; //set the start gate to finish
                 third_gate = high_resolution_clock::now(); //get the third gate time
                 sector_2 = duration_cast<milliseconds>(third_gate - second_gate); // calc the time in sector 2
                 printf("Sector 2 Time: %d\n", (int)sector_2.count());
+                // present_leaderboard((int)sector_1.count(), (int)sector_2.count(), 0, 0);
                 break;
             default:
                 break;
 
         }
+        
         return start_to_finish; // return the value of start_to_finish
 }
 
 // the following 3 buffers could be combined to 1 but i honeslty could figure it out and i wanted to go home so as it stands there are 3
 // please note to avoid weird errors with the buffers the 3 ports requires 3 indivigual buffers 
 
-int process_first_buffer(char string_data, size_t bytes_read) // handles the first ports buffer
-{
+int process_first_buffer(char string_data, size_t bytes_read) {// handles the first ports buffer 
     int gate_id_value; // note that i dont use the noraml gate_id, if it did it would overwrite gate id, when it isnt supposed to
     if (bytes_read != 1)  // idk what this check just rolling with it
     {
@@ -139,8 +148,7 @@ int process_first_buffer(char string_data, size_t bytes_read) // handles the fir
 }
 
 //essetially the same as the previous except should refer to second buffer
-int process_second_buffer(char string_data, size_t bytes_read)
-{
+int process_second_buffer(char string_data, size_t bytes_read) {
     int gate_id_value;
     if (bytes_read != 1) 
     {
@@ -176,8 +184,7 @@ int process_second_buffer(char string_data, size_t bytes_read)
 }
 
 // same again except i havent tested this yet and should refer to the third
-int process_third_buffer(char string_data, size_t bytes_read)
-{
+int process_third_buffer(char string_data, size_t bytes_read) {
     int gate_id_value;
     if (bytes_read != 1) 
     {
@@ -215,10 +222,70 @@ int process_third_buffer(char string_data, size_t bytes_read)
     return gate_id_value;
 }
 
-int main(int argc, char *argv[]) 
-{
+void present_leaderboard(string driver_name, int sect1_time, int sect2_time, int sect3_time, int laptime) {
+    
+    // A difference of 200 in the x position for columns
+    // A difference of 60 in the y position for each row
+
+    // Still need to make it dynamic with an array of drivers and the corresponding times.
+    // Will need to sort by lap time and then loop through and putText of corresponding info.
+
+    // Convert times to strings
+    string sect1_str = to_string(sect1_time);
+    string sect2_str = to_string(sect2_time);
+    string sect3_str = to_string(sect3_time);
+    string lapt_str = to_string(laptime);
+
+    // Put text
+    cv::putText(bgr_img,
+                driver_name,
+                cv::Point(175, 350), //text position
+                cv::FONT_HERSHEY_DUPLEX,
+                1.0, // font scale
+                CV_RGB(255, 255, 255), //font color
+                2);
+
+    // Put text
+    cv::putText(bgr_img,
+                sect1_str,
+                cv::Point(375, 350), //text position
+                cv::FONT_HERSHEY_DUPLEX,
+                1.0, // font scale
+                CV_RGB(255, 255, 255), //font color
+                2);
+    // Put text
+    cv::putText(bgr_img,
+                sect2_str,
+                cv::Point(575, 410), //text position
+                cv::FONT_HERSHEY_DUPLEX,
+                1.0, // font scale
+                CV_RGB(255, 255, 255), //font color
+                2);
+    
+    cv::imshow("Leaderboard", bgr_img); //show the leaderboard
+    
+    // Allow openCV to process GUI events
+    cv::waitKey(1000);
+	
+}
+
+
+int main(int argc, char *argv[])  {
+    
+    // Load the LeaderBoard image
+	bgr_img = imread("../leaderboard.jpg");
+	if (!bgr_img.data) {
+		bgr_img = imread("leaderboard.jpg");
+		if (!bgr_img.data) {
+			std::cerr << "Failed to load image\n";
+			return 1;
+		}
+	}
+
     // not a bug, its a feature :)
-    printf("Please configure all gates by moving your hand through each gate :)\n"); 
+    printf("Please configure all gates by moving your hand through each gate :)\n");
+    // Get drivers name
+    printf("Please enter drivers name:\n");
 
     // sets values to check if all the gate are configured
     enum gate_state_t {not_configd = 0, configd = 1}; 
@@ -260,12 +327,18 @@ int main(int argc, char *argv[])
             // monitor the end gate
             .fd =  port_ttyACM2, //terminal uses stad input
             .events = POLLIN | POLLERR, 
-        },      
+        },
+        {
+            // monitor the terminal
+            .fd = STDIN_FILENO, //terminal uses stad input
+            .events = POLLIN | POLLERR, //TODO change these (?)
+        },  
 
     };
 
-    for (;;) 
-    {
+    static char user_msg [512];
+    for (;;) {
+
         // Wait for events
         poll(pfds, sizeof(pfds)/sizeof(struct pollfd), -1);
         // Check if a a port has sent info arrived
@@ -361,7 +434,27 @@ int main(int argc, char *argv[])
                     continue;
                 } 
                 gate_id = process_third_buffer(string_data, bytes_read);
-            }           
+            }
+                    
+        }
+        
+        if (pfds[3].revents) {
+            // Read the incoming message from terminal
+            ssize_t bytes_read = read(STDIN_FILENO, user_msg, sizeof(user_msg) - 1); // with room for a trailing null
+            if (bytes_read < 0) {
+                return 0;
+            }
+            // Make the message null terminated
+            user_msg[bytes_read] = 0;
+            size_t drivername_length = strlen(user_msg);
+
+            printf("Goodluck for your race %s!! \n", user_msg);
+
+            
+            string driver_name;
+            driver_name.assign(user_msg, user_msg + (drivername_length - 1));
+            present_leaderboard(driver_name, 100, 101, 103, 304);
+
         }
         
         // functionality of each gate is here! //TODO TURN INTO FUNCTION
