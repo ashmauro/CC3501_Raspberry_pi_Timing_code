@@ -10,6 +10,7 @@
 #include <netinet/udp.h>
 #include <poll.h>
 #include <stdio.h>
+#include <iomanip>
 #include <termios.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -79,7 +80,7 @@ bool sort_bool = false;
 size_t len;
 
 // this function handles how a gate functions, depending on its assigned gate id
-bool gate_logic (struct driver driver_array[10], int gate_id, bool start_to_finish) {
+bool gate_logic (int gate_id, bool start_to_finish) {
     switch (gate_id) 
         {
             case 1: // its the start/finish gate
@@ -132,6 +133,7 @@ bool gate_logic (struct driver driver_array[10], int gate_id, bool start_to_fini
                 break;
 
         }
+       
         return start_to_finish; // return the value of start_to_finish
 }
 
@@ -252,56 +254,67 @@ int process_third_buffer(char string_data, size_t bytes_read) {
     return gate_id_value;
 }
 
-// Create struct for driver stats
-struct driver {
+// Create Driver class
+class Driver {
+   
+    public:
     string driver_name;
     float sector1_time;
     float sector2_time;
     float sector3_time;
     float lap_time;
     int index;
-};
+    // New driver initliasation
+    Driver(string in_driver_name)
+        :driver_name(in_driver_name)
+        ,sector1_time(0.0f)
+        ,sector2_time(0.0f)
+        ,sector3_time(0.0f)
+        ,lap_time(0.0f)
+        {}
+    bool operator < (const Driver other_driver) const {return lap_time < other_driver.lap_time;} // sorting
+};  
 
-void update_stats(struct driver driver_array[10], float sect1_time, float sect2_time, float sect3_time, float laptime, int index) {
+void update_stats(vector<Driver> &drivers, float sect1_time, float sect2_time, float sect3_time, float laptime, int index) {
     
     // Update drivers stats
-    driver_array[index].sector1_time = sect1_time;
-    driver_array[index].sector2_time = sect2_time;
-    driver_array[index].sector3_time = sect3_time;
-    driver_array[index].lap_time = laptime;
+    drivers[index].sector1_time = sect1_time;
+    drivers[index].sector2_time = sect2_time;
+    drivers[index].sector3_time = sect3_time;
+    drivers[index].lap_time = laptime;
 
 }
 
-void update_name(struct driver driver_array[10], string driver_name, int index) {
+void update_name(vector<Driver> &drivers, string name, int index) {
     
-    // Update drivers stat
-    driver_array[index].driver_name = driver_name;
+    // Update drivers 
+    drivers[index].driver_name = name;
     
 }
 
-bool compare_driver(const driver &driver1, const driver &driver2) {
-    // compare inputs
-    if (driver2.lap_time > driver1.lap_time) {
-        return 1;
-    } else {
-        return 0;
-    } 
+// Function to convert float to specified decimal place
+std::string to_string_with_precision(const float a_value, const int n = 6) {
+    std::ostringstream out;
+    out.precision(n);
+    out << std::fixed << a_value;
+    return out.str();
 }
 
-void present_leaderboard(struct driver driver_array[10], struct driver display_array[10], bool present, bool sort_drivers) {
-
-    display_array = driver_array;
+// Present leaderboard function
+void present_leaderboard(vector<Driver> drivers, bool present, bool sort_drivers) {
+    
     if (present == true) {
-        // clone riginal image
+        
+        // Clone the original image to remove old text
         display_img = bgr_img.clone();
         cv::imshow("Leaderboard", display_img);
         cv::waitKey(1000);
         
-        if (sort_drivers == true) {
-            // Sort the data
-            // sort(display_array, display_array + len, &compare_driver);
-        }
+        // Sort drivers
+        sort(drivers.begin(), drivers.end());
+        
 
+        // Put text variables
         int column1_pos = 175;
         int column2_pos = 350;
         int column3_pos = 525;
@@ -309,31 +322,29 @@ void present_leaderboard(struct driver driver_array[10], struct driver display_a
         int column5_pos = 900;
         int y_pos = 350;
 
-        for (int i = 0; i < 10; i++) {
-        
+        // Loop the driver array and put text
+        int num_drivers = 0;
+        for (Driver driver : drivers) {
+            if (num_drivers >= 10) { // Only display the top 10 drivers
+                break;
+            }
 
-            // A difference of 200 in the x position for columns
-            // A difference of 60 in the y position for each row
-
-            // Still need to make it dynamic with an array of drivers and the corresponding times.
-            // Will need to sort by lap time and then loop through and putText of corresponding info.
-
-            // Convert times to strings
-            string sect1_str = to_string(display_array[i].sector1_time);
-            string sect2_str = to_string(display_array[i].sector2_time);
-            string sect3_str = to_string(display_array[i].sector3_time);
-            string lapt_str = to_string(display_array[i].lap_time);
+            // Convert times to strings with 3 decimal places
+            string sect1_str = to_string_with_precision(driver.sector1_time, 3);
+            string sect2_str = to_string_with_precision(driver.sector2_time, 3);
+            string sect3_str = to_string_with_precision(driver.sector3_time, 3);
+            string lapt_str = to_string_with_precision(driver.lap_time, 3);
             
             // Put driver name
             cv::putText(display_img,
-                        display_array[i].driver_name,
+                        driver.driver_name,
                         cv::Point(column1_pos, y_pos), //text position
                         cv::FONT_HERSHEY_DUPLEX,
                         1.0, // font scale
                         CV_RGB(255, 255, 255), //font color
                         2);
 
-            // Put ector 1 time
+            // Put sector 1 time
             cv::putText(display_img,
                         sect1_str,
                         cv::Point(column2_pos, y_pos), //text position
@@ -368,18 +379,18 @@ void present_leaderboard(struct driver driver_array[10], struct driver display_a
                         CV_RGB(255, 255, 255), //font color
                         2);
             
-            y_pos = y_pos + 60;
+            y_pos = y_pos + 60; // Iterate y position
+            num_drivers++; // iterate displayed drivers
         }
         cv::imshow("Leaderboard", display_img); //show the leaderboard
+        
         // Allow openCV to process GUI events
         cv::waitKey(1000);
-    
-        for (int j = 0; j < len; j++) {
-            cout << driver_array[j].driver_name << driver_array[j].sector1_time << driver_array[j].sector2_time << driver_array[j]. sector3_time << driver_array[j].lap_time << endl;
-        }
+
     }
 }
 
+// Functio to ask for next drivers name
 void get_name(bool driver_bool) {
 
     if (driver_bool == true) {
@@ -389,19 +400,7 @@ void get_name(bool driver_bool) {
 
 int main(int argc, char *argv[])  {
     
-    driver driver_array[10];
-    driver display_array[10];
-    
-    len = sizeof(driver_array) / sizeof(driver_array[0]);
-    
-    for (int k = 0; k < 10; k++) {
-        // sets stats initilly to zero
-        driver_array[k].sector1_time = 0;
-        driver_array[k].sector2_time = 0;
-        driver_array[k].sector3_time = 0;
-        driver_array[k].lap_time = 0;
-    }
-
+    vector<Driver> drivers; // initiliase a vector of the Driver class
     
     // Load the LeaderBoard image
 	bgr_img = imread("../leaderboard.jpg");
@@ -412,11 +411,9 @@ int main(int argc, char *argv[])  {
 			return 1;
 		}
 	}
-    
 
     // not a bug, its a feature :)
     cout << "Please configure all gates by moving your hand through each gate :)" << endl;
-    // printf("Please configure all gates by moving your hand through each gate :)");
 
     // sets values to check if all the gate are configured
     enum gate_state_t {not_configd = 0, configd = 1}; 
@@ -479,10 +476,11 @@ int main(int argc, char *argv[])  {
         if ((port_ttyACM0_state == configd) && (port_ttyACM1_state == configd) && (port_ttyACM2_state == configd) && (all_ports_state == not_configd)) // (port_ttyACM0_state == configd) && (port_ttyACM1_state == configd) && (port_ttyACM2_state == configd)
         {
             all_ports_state = configd;
-            
+            // Since all gates are now configured, ask for first drivers name.
+            // This will never be accesed again
             // Get first drivers name
             printf("\nPlease enter drivers name:\n");
-            finished_config = true;
+            finished_config = true; // change conditional boolean to recieve user message below
         }
 
         if (pfds[0].revents) // port tty0 gets an event 
@@ -573,7 +571,6 @@ int main(int argc, char *argv[])  {
         
         }
         
-        // Initiliase new driver in the Drivers class array
         if (pfds[3].revents) {
             
             if (finished_config == true) {
@@ -584,43 +581,41 @@ int main(int argc, char *argv[])  {
                 if (bytes_read < 0) {
                     return 0;
                 }
-                driver_index++;
                 
+                driver_index++; // Update the driver index
                 // Make the message null terminated
                 user_msg[bytes_read] = 0;
+                // Get size of message
                 size_t drivername_length = strlen(user_msg);
+                // Print welcome message
                 cout << "\nGoodluck for your race " << user_msg << endl;
-
-                // Resert time vales
-                sect1_time = 0;
-                sect2_time = 0;
-                sect3_time = 0;
-                laptime = 0;
-            
-                // sort_bool = false;
+                // Change presentation conditional boolean
                 present_bool = true;
-        
-                string drivername;
-                drivername.assign(user_msg, user_msg + (drivername_length - 1));
-                update_name(driver_array, drivername, driver_index);
-                update_stats(driver_array, sect1_time, sect2_time, sect3_time, laptime, driver_index);
-                present_leaderboard(driver_array, display_array, present_bool, sort_bool); // present leaderboard
+                // Conver user input to string
+                string recieved_drivername;
+                recieved_drivername.assign(user_msg, user_msg + (drivername_length - 1));
+                // Initialise a new driver instance
+                drivers.push_back(Driver(recieved_drivername));
             }
             present_bool = false; // disable presenting leaderboard
         }
         
         // functionality of each gate is here! //TODO TURN INTO FUNCTION
-        start_to_finish = gate_logic(driver_array, gate_id, start_to_finish);
+        start_to_finish = gate_logic(gate_id, start_to_finish);
 
-        update_stats(driver_array, sect1_time, sect2_time, sect3_time, laptime, driver_index); // Update driver stats
+        // Update stats once driver is finished race
+        if (driver_index != -1 ){
+            update_stats(drivers, sect1_time, sect2_time, sect3_time, laptime, driver_index); // Update driver stats
+        }
 
-        get_name(driver_bool); // print function
+        //Present leaderboard
+        present_leaderboard(drivers, present_bool, sort_bool);
+        // disable presenting leaderboard
+        present_bool = false;
+        // Cal function to ask for next drivers name
+        get_name(driver_bool);
+        // disable printing of get_name
         driver_bool = false;
-
-        present_leaderboard(driver_array, display_array, present_bool, sort_bool); // present leaderboard
-        present_bool = false; // disable presenting leaderboard
-        sort_bool = false;
-
 
         gate_id = 0;
     }
